@@ -1,0 +1,2916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Monolith — Local Privacy Vault</title>
+  <style>
+    :root {
+      --bg-void: #050507;
+      --bg-surface: #0b0b0e;
+      --glass-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.095) 0%, rgba(255, 255, 255, 0.03) 100%);
+      --glass-bg-strong: linear-gradient(145deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
+      --glass-border: rgba(255, 255, 255, 0.14);
+      --glass-border-strong: rgba(255, 255, 255, 0.26);
+      --glass-highlight: rgba(255, 255, 255, 0.24);
+      --text-primary: #f5f5f7;
+      --text-secondary: #a1a1aa;
+      --text-muted: #71717a;
+      --ink-dark: #09090b;
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --radius-pill: 9999px;
+      --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: var(--bg-void);
+      color: var(--text-primary);
+      font-family: "Inter", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient monochrome liquid background */
+    .ambient-stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      z-index: 0;
+      pointer-events: none;
+      background: radial-gradient(circle at 20% 15%, #16161b 0%, #050507 65%);
+    }
+
+    .liquid-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(70px);
+      opacity: 0.42;
+      will-change: transform;
+    }
+
+    .orb-1 {
+      width: 380px;
+      height: 380px;
+      top: -110px;
+      left: -80px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.26) 0%, rgba(160, 160, 170, 0.06) 55%, transparent 75%);
+      animation: driftA 18s ease-in-out infinite alternate;
+    }
+
+    .orb-2 {
+      width: 340px;
+      height: 340px;
+      bottom: -90px;
+      right: -70px;
+      background: radial-gradient(circle, rgba(220, 220, 230, 0.2) 0%, rgba(120, 120, 130, 0.05) 55%, transparent 75%);
+      animation: driftB 22s ease-in-out infinite alternate;
+    }
+
+    .orb-3 {
+      width: 240px;
+      height: 240px;
+      top: 42%;
+      left: 55%;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.14) 0%, transparent 70%);
+      animation: driftC 15s ease-in-out infinite alternate;
+    }
+
+    @keyframes driftA {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(48px, 64px) scale(1.12); }
+    }
+    @keyframes driftB {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(-54px, -48px) scale(1.1); }
+    }
+    @keyframes driftC {
+      0% { transform: translate(-30px, 20px) scale(0.95); }
+      100% { transform: translate(20px, -40px) scale(1.08); }
+    }
+
+    /* Outer desktop centering stage -> full-bleed on Android mobile */
+    .viewport-wrapper {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .android-shell {
+      position: relative;
+      width: 100%;
+      max-width: 428px;
+      height: min(860px, 100%);
+      background: rgba(10, 10, 13, 0.62);
+      backdrop-filter: blur(36px) saturate(130%);
+      -webkit-backdrop-filter: blur(36px) saturate(130%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 38px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.25),
+        inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+        0 30px 90px rgba(0, 0, 0, 0.75);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    @media (max-width: 520px) {
+      .viewport-wrapper {
+        padding: 0;
+      }
+      .android-shell {
+        max-width: 100%;
+        height: 100%;
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+      }
+    }
+
+    /* Android Status Bar */
+    .android-status-bar {
+      height: 34px;
+      padding: 0 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: rgba(245, 245, 247, 0.86);
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    .status-icons {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-pill-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    /* Main Screen Container */
+    .screen-container {
+      position: relative;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .screen {
+      display: none;
+      flex-direction: column;
+      flex: 1;
+      height: 100%;
+      overflow: hidden;
+      animation: fadeSlideIn 0.28s var(--ease-spring);
+    }
+
+    .screen.active {
+      display: flex;
+    }
+
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Liquid Glass Primitives */
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(24px) saturate(125%);
+      -webkit-backdrop-filter: blur(24px) saturate(125%);
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-lg);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        0 10px 28px rgba(0, 0, 0, 0.35);
+    }
+
+    .glass-card-subtle {
+      background: rgba(255, 255, 255, 0.045);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-md);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+
+    .scroll-area {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px 18px 104px;
+      scrollbar-width: none;
+    }
+    .scroll-area::-webkit-scrollbar {
+      display: none;
+    }
+
+    .scroll-area-tight {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 12px 18px 28px;
+      scrollbar-width: none;
+    }
+    .scroll-area-tight::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* Typography */
+    .brand-mark {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      background: var(--glass-bg-strong);
+      border: 1px solid var(--glass-border-strong);
+      box-shadow:
+        inset 0 1px 1px rgba(255, 255, 255, 0.35),
+        0 12px 26px rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .title-lg {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      color: var(--text-primary);
+    }
+
+    .title-md {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--text-primary);
+    }
+
+    .subtitle {
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text-secondary);
+    }
+
+    .label-xs {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+    }
+
+    /* Form Controls */
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .glass-input {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: var(--radius-sm);
+      padding: 13px 42px 13px 14px;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .glass-input.no-icon {
+      padding-right: 14px;
+    }
+
+    .glass-input::placeholder {
+      color: rgba(161, 161, 170, 0.55);
+    }
+
+    .glass-input:focus {
+      background: rgba(255, 255, 255, 0.085);
+      border-color: rgba(255, 255, 255, 0.45);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+    }
+
+    .glass-textarea {
+      width: 100%;
+      min-height: 220px;
+      resize: none;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-md);
+      padding: 14px;
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.6;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .glass-textarea:focus {
+      border-color: rgba(255, 255, 255, 0.36);
+      background: rgba(255, 255, 255, 0.065);
+    }
+
+    .eye-btn {
+      position: absolute;
+      right: 10px;
+      width: 30px;
+      height: 30px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    .eye-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-primary);
+    }
+
+    /* Buttons */
+    .btn-primary {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      background: linear-gradient(180deg, #ffffff 0%, #dcdce2 100%);
+      color: var(--ink-dark);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 13px 18px;
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 8px 24px rgba(255, 255, 255, 0.12);
+      transition: transform 0.16s var(--ease-spring), opacity 0.16s ease;
+    }
+
+    .btn-primary:active {
+      transform: scale(0.97);
+    }
+
+    .btn-glass {
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: var(--glass-bg);
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 11px 16px;
+      border-radius: var(--radius-pill);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      transition: background 0.18s ease, transform 0.16s var(--ease-spring);
+    }
+
+    .btn-glass:hover {
+      background: var(--glass-bg-strong);
+    }
+
+    .btn-glass:active {
+      transform: scale(0.97);
+    }
+
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.18s ease, transform 0.15s ease;
+    }
+
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.13);
+    }
+    .icon-btn:active {
+      transform: scale(0.93);
+    }
+
+    /* Android Top App Bar */
+    .top-bar {
+      padding: 8px 18px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .top-bar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .top-bar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Android Bottom Navigation Bar (Material 3 Liquid Glass Pill) */
+    .bottom-nav-wrap {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 18px;
+      z-index: 20;
+    }
+
+    .bottom-nav {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      padding: 6px;
+      background: linear-gradient(145deg, rgba(28, 28, 32, 0.84) 0%, rgba(14, 14, 17, 0.88) 100%);
+      backdrop-filter: blur(30px) saturate(140%);
+      -webkit-backdrop-filter: blur(30px) saturate(140%);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 30px;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        0 14px 34px rgba(0, 0, 0, 0.6);
+    }
+
+    .nav-item {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      padding: 9px 6px;
+      border-radius: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      transition: background 0.22s var(--ease-spring), color 0.2s ease;
+    }
+
+    .nav-item.active {
+      background: rgba(255, 255, 255, 0.16);
+      color: #ffffff;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    }
+
+    /* Android FAB */
+    .fab {
+      position: absolute;
+      right: 20px;
+      bottom: 94px;
+      z-index: 22;
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      background: linear-gradient(155deg, #ffffff 0%, #d4d4d8 100%);
+      color: var(--ink-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.15);
+      transition: transform 0.2s var(--ease-spring), opacity 0.2s ease;
+    }
+
+    .fab:active {
+      transform: scale(0.92);
+    }
+
+    .fab.hidden {
+      display: none;
+    }
+
+    /* Empty State */
+    .empty-state {
+      margin-top: 52px;
+      padding: 36px 24px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .empty-icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.055);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+    }
+
+    /* Notes List */
+    .notes-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .note-card {
+      padding: 15px 16px;
+      cursor: pointer;
+      transition: transform 0.16s var(--ease-spring), background 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      text-align: left;
+      width: 100%;
+    }
+
+    .note-card:hover {
+      background: var(--glass-bg-strong);
+    }
+
+    .note-card:active {
+      transform: scale(0.985);
+    }
+
+    .note-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .note-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .note-preview {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .note-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .badge-mono {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: var(--radius-pill);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: var(--text-primary);
+    }
+
+    /* Media Filter Chips & Grid */
+    .chip-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .filter-chip {
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-secondary);
+      padding: 7px 14px;
+      border-radius: var(--radius-pill);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .filter-chip.active {
+      background: #ffffff;
+      color: var(--ink-dark);
+      border-color: #ffffff;
+      font-weight: 600;
+    }
+
+    .media-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .media-tile {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border-radius: 14px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .media-tile img,
+    .media-tile video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .media-type-pill {
+      position: absolute;
+      bottom: 6px;
+      left: 6px;
+      background: rgba(5, 5, 7, 0.72);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .media-decoy-dot {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.88);
+      color: var(--ink-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+    }
+
+    /* Settings List */
+    .settings-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .settings-row {
+      width: 100%;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      text-align: left;
+      cursor: pointer;
+      color: var(--text-primary);
+      transition: background 0.18s ease;
+    }
+
+    .settings-row:hover {
+      background: var(--glass-bg-strong);
+    }
+
+    .settings-row-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .settings-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* Toggle Switch */
+    .switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      cursor: pointer;
+      transition: background 0.2s ease;
+      flex-shrink: 0;
+    }
+
+    .switch::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.72);
+      transition: transform 0.22s var(--ease-spring), background 0.2s ease;
+    }
+
+    .switch.on {
+      background: #ffffff;
+      border-color: #ffffff;
+    }
+
+    .switch.on::after {
+      transform: translateX(20px);
+      background: var(--ink-dark);
+    }
+
+    /* Modals / Android Bottom Sheets */
+    .modal-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      background: rgba(0, 0, 0, 0.68);
+      backdrop-filter: blur(10px);
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 12px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .modal-backdrop.center {
+      align-items: center;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .sheet {
+      width: 100%;
+      max-height: 90%;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(160deg, rgba(26, 26, 30, 0.94) 0%, rgba(12, 12, 15, 0.96) 100%);
+      backdrop-filter: blur(36px);
+      -webkit-backdrop-filter: blur(36px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 26px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 20px 60px rgba(0, 0, 0, 0.75);
+      overflow: hidden;
+      animation: sheetUp 0.26s var(--ease-spring);
+    }
+
+    @keyframes sheetUp {
+      from { opacity: 0; transform: translateY(24px) scale(0.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .sheet-handle {
+      width: 38px;
+      height: 4px;
+      border-radius: 99px;
+      background: rgba(255, 255, 255, 0.26);
+      margin: 10px auto 4px;
+      flex-shrink: 0;
+    }
+
+    .sheet-header {
+      padding: 10px 18px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      flex-shrink: 0;
+    }
+
+    .sheet-body {
+      padding: 16px 18px 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    /* Full-Screen Media Viewer */
+    .viewer-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 45;
+      background: rgba(5, 5, 7, 0.96);
+      backdrop-filter: blur(24px);
+      display: none;
+      flex-direction: column;
+    }
+
+    .viewer-overlay.open {
+      display: flex;
+    }
+
+    .viewer-stage {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    .viewer-stage img,
+    .viewer-stage video {
+      max-width: 100%;
+      max-height: 100%;
+      border-radius: 14px;
+      object-fit: contain;
+    }
+
+    .viewer-footer {
+      padding: 14px 18px 24px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: rgba(15, 15, 18, 0.85);
+    }
+
+    /* Error / Info Message Box */
+    .alert-box {
+      padding: 11px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 12.5px;
+      line-height: 1.45;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      color: #ffffff;
+      display: none;
+    }
+
+    .alert-box.show {
+      display: block;
+    }
+
+    /* 1-Hour Full Touch-Disabled Lockout Overlay */
+    .lockout-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(4, 4, 6, 0.94);
+      backdrop-filter: blur(42px);
+      -webkit-backdrop-filter: blur(42px);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      text-align: center;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: not-allowed;
+    }
+
+    .lockout-overlay.active {
+      display: flex;
+    }
+
+    .lockout-timer {
+      font-size: 46px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      font-variant-numeric: tabular-nums;
+      margin: 18px 0 8px;
+      color: #ffffff;
+    }
+
+    /* Android Snackbar Toast */
+    .snackbar {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 92px;
+      z-index: 60;
+      padding: 12px 16px;
+      border-radius: 16px;
+      background: rgba(245, 245, 247, 0.94);
+      color: var(--ink-dark);
+      font-size: 13px;
+      font-weight: 500;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+      opacity: 0;
+      transform: translateY(14px);
+      pointer-events: none;
+      transition: opacity 0.22s ease, transform 0.22s var(--ease-spring);
+    }
+
+    .snackbar.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Android Gesture Bar */
+    .android-gesture-bar {
+      height: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      pointer-events: none;
+    }
+
+    .gesture-pill {
+      width: 112px;
+      height: 4px;
+      border-radius: 99px;
+      background: rgba(255, 255, 255, 0.26);
+    }
+
+    /* Checkbox row */
+    .check-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      cursor: pointer;
+    }
+
+    .check-row input {
+      margin-top: 2px;
+      accent-color: #ffffff;
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    .text-link {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #ffffff;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.09);
+      width: 100%;
+    }
+
+    .attempt-dots {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .attempt-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      transition: background 0.2s ease, transform 0.2s ease;
+    }
+
+    .attempt-dot.used {
+      background: #ffffff;
+      transform: scale(1.15);
+    }
+
+    .hidden-input {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-stage" aria-hidden="true">
+    <div class="liquid-orb orb-1"></div>
+    <div class="liquid-orb orb-2"></div>
+    <div class="liquid-orb orb-3"></div>
+  </div>
+
+  <!-- 1-Hour Full Touch-Disabled Lockout Overlay -->
+  <div id="lockoutOverlay" class="lockout-overlay" role="alertdialog" aria-modal="true" aria-labelledby="lockoutTitle">
+    <div class="glass-card" style="padding: 32px 24px; max-width: 340px; width: 100%;">
+      <div class="brand-mark" style="margin: 0 auto 14px;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="11" width="16" height="10" rx="3"></rect>
+          <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+          <line x1="12" y1="15" x2="12" y2="17"></line>
+        </svg>
+      </div>
+      <div id="lockoutTitle" class="title-md">Vault Temporarily Locked</div>
+      <p class="subtitle" style="margin-top: 6px;">5 incorrect password attempts detected. All touch and keyboard inputs are disabled for 1 hour.</p>
+      <div id="lockoutTimer" class="lockout-timer">60:00</div>
+      <div class="label-xs">Local Security Lockout Active</div>
+    </div>
+  </div>
+
+  <div class="viewport-wrapper">
+    <div class="android-shell">
+      <!-- Android Status Bar -->
+      <div class="android-status-bar">
+        <span id="statusClock">12:00</span>
+        <div class="status-icons">
+          <span class="label-xs" style="font-size: 10px; color: rgba(255,255,255,0.68);">LOCAL</span>
+          <span class="status-pill-dot"></span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <svg width="18" height="12" viewBox="0 0 24 14" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="1" y="2" width="18" height="10" rx="2.5"></rect>
+            <rect x="3.5" y="4.5" width="12" height="5" rx="1" fill="currentColor"></rect>
+            <line x1="22" y1="5" x2="22" y2="9" stroke-linecap="round"></line>
+          </svg>
+        </div>
+      </div>
+
+      <div class="screen-container">
+        <!-- SCREEN 1A: FIRST-TIME INSTALLATION SETUP -->
+        <section id="screenSetup" class="screen" aria-label="First-Time Vault Setup">
+          <div class="scroll-area-tight">
+            <div style="display: flex; flex-direction: column; align-items: center; text-align: center; padding: 14px 4px 18px;">
+              <div class="brand-mark" style="margin-bottom: 14px;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2L4 6v6c0 5.5 3.4 9.7 8 11 4.6-1.3 8-5.5 8-11V6l-8-4z"></path>
+                  <circle cx="12" cy="11" r="2.2"></circle>
+                  <path d="M12 13.2V16"></path>
+                </svg>
+              </div>
+              <h1 class="title-lg">Monolith Vault</h1>
+              <p class="subtitle" style="margin-top: 6px; max-width: 310px;">
+                First-time setup. Everything stays strictly on your device. Configure your three distinct access keys below.
+              </p>
+            </div>
+
+            <form id="setupForm" class="glass-card" style="padding: 18px; display: flex; flex-direction: column; gap: 16px;" autocomplete="off">
+              <div id="setupAlert" class="alert-box"></div>
+
+              <!-- 1. Primary Vault Password -->
+              <div class="field-group">
+                <label class="field-label" for="setupPrimary">
+                  <span>1. Primary Vault Password</span>
+                  <span class="label-xs">5 tries / 1h lock</span>
+                </label>
+                <div class="input-wrap">
+                  <input id="setupPrimary" class="glass-input" type="password" placeholder="Enter primary password (min 4 chars)" minlength="4" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="setupPrimary" aria-label="Toggle visibility"></button>
+                </div>
+                <div class="input-wrap">
+                  <input id="setupPrimaryConfirm" class="glass-input" type="password" placeholder="Confirm primary password" minlength="4" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="setupPrimaryConfirm" aria-label="Toggle visibility"></button>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <!-- 2. Decoy / Recovery Mode Password -->
+              <div class="field-group">
+                <label class="field-label" for="setupDecoy">
+                  <span>2. Decoy (Recovery) Password</span>
+                  <span class="label-xs">Selected files only</span>
+                </label>
+                <div class="input-wrap">
+                  <input id="setupDecoy" class="glass-input" type="password" placeholder="Enter decoy password (must be unique)" minlength="4" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="setupDecoy" aria-label="Toggle visibility"></button>
+                </div>
+                <div class="input-wrap">
+                  <input id="setupDecoyConfirm" class="glass-input" type="password" placeholder="Confirm decoy password" minlength="4" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="setupDecoyConfirm" aria-label="Toggle visibility"></button>
+                </div>
+              </div>
+
+              <div class="divider"></div>
+
+              <!-- 3. All-Reset Password -->
+              <div class="field-group">
+                <label class="field-label" for="setupReset">
+                  <span>3. All-Reset Format Password</span>
+                  <span class="label-xs">Wipes all data</span>
+                </label>
+                <div class="input-wrap">
+                  <input id="setupReset" class="glass-input" type="password" placeholder="Enter reset password (must be unique)" minlength="4" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="setupReset" aria-label="Toggle visibility"></button>
+                </div>
+                <div class="input-wrap">
+                  <input id="setupResetConfirm" class="glass-input" type="password" placeholder="Confirm reset password" minlength="4" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="setupResetConfirm" aria-label="Toggle visibility"></button>
+                </div>
+              </div>
+
+              <label class="check-row">
+                <input id="setupAgree" type="checkbox" required />
+                <span>I understand that passwords cannot be recovered remotely and agree to the <button type="button" id="setupOpenLegal" class="text-link">Terms &amp; Privacy</button>.</span>
+              </label>
+
+              <button type="submit" class="btn-primary">Create Local Vault</button>
+            </form>
+          </div>
+        </section>
+
+        <!-- SCREEN 1B: PASSWORD LOCK SCREEN (SUBSEQUENT OPENS) -->
+        <section id="screenLock" class="screen" aria-label="Vault Lock Screen">
+          <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px 20px;">
+            <div class="glass-card" style="padding: 28px 22px; display: flex; flex-direction: column; align-items: center; text-align: center;">
+              <div class="brand-mark" style="margin-bottom: 16px;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="11" width="16" height="10" rx="3"></rect>
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+                </svg>
+              </div>
+              <h1 class="title-lg">Unlock Vault</h1>
+              <p class="subtitle" style="margin-top: 6px;">Enter your password to access local storage.</p>
+
+              <form id="unlockForm" style="width: 100%; margin-top: 22px; display: flex; flex-direction: column; gap: 14px;" autocomplete="off">
+                <div id="unlockAlert" class="alert-box" style="text-align: left;"></div>
+
+                <div class="input-wrap">
+                  <input id="unlockPassword" class="glass-input" type="password" placeholder="Password" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="unlockPassword" aria-label="Toggle visibility"></button>
+                </div>
+
+                <button type="submit" class="btn-primary">Unlock</button>
+              </form>
+
+              <div class="attempt-dots" id="unlockAttemptDots" aria-label="Failed attempts indicator">
+                <span class="attempt-dot"></span>
+                <span class="attempt-dot"></span>
+                <span class="attempt-dot"></span>
+                <span class="attempt-dot"></span>
+                <span class="attempt-dot"></span>
+              </div>
+              <div id="unlockAttemptLabel" class="label-xs" style="margin-top: 8px;">5 attempts before 1-hour lock</div>
+            </div>
+
+            <div style="margin-top: 18px; text-align: center;">
+              <button type="button" id="lockOpenLegal" class="text-link subtitle">Terms &amp; Privacy</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- SCREEN 2: MAIN VAULT (3 SECTIONS: NOTES, PHOTOS & VIDEOS, SETTINGS) -->
+        <section id="screenVault" class="screen" aria-label="Main Vault">
+          <header class="top-bar">
+            <div class="top-bar-left">
+              <h2 id="vaultHeaderTitle" class="title-lg">Notes</h2>
+            </div>
+            <div class="top-bar-actions">
+              <button type="button" id="btnToggleSearch" class="icon-btn" aria-label="Search">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <line x1="20" y1="20" x2="16.65" y2="16.65"></line>
+                </svg>
+              </button>
+              <button type="button" id="btnLockNow" class="icon-btn" aria-label="Lock Vault" title="Lock Vault">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="11" width="16" height="10" rx="3"></rect>
+                  <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <!-- Collapsible Search Bar -->
+          <div id="searchBarWrap" style="display: none; padding: 0 18px 10px;">
+            <div class="input-wrap">
+              <input id="vaultSearchInput" class="glass-input no-icon" type="search" placeholder="Search..." />
+            </div>
+          </div>
+
+          <!-- TAB 1: NOTES -->
+          <div id="tabNotes" class="scroll-area">
+            <div id="notesList" class="notes-list"></div>
+            <div id="notesEmpty" class="glass-card empty-state" style="display: none;">
+              <div class="empty-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="8" y1="13" x2="16" y2="13"></line>
+                  <line x1="8" y1="17" x2="13" y2="17"></line>
+                </svg>
+              </div>
+              <div class="title-md">No Notes Yet</div>
+              <p class="subtitle">Tap the + button to write and save a private note locally on your device.</p>
+            </div>
+          </div>
+
+          <!-- TAB 2: PHOTOS & VIDEOS -->
+          <div id="tabMedia" class="scroll-area" style="display: none;">
+            <div class="chip-row">
+              <button type="button" class="filter-chip active" data-media-filter="all">All</button>
+              <button type="button" class="filter-chip" data-media-filter="image">Photos</button>
+              <button type="button" class="filter-chip" data-media-filter="video">Videos</button>
+            </div>
+            <div id="mediaGrid" class="media-grid"></div>
+            <div id="mediaEmpty" class="glass-card empty-state" style="display: none;">
+              <div class="empty-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+                  <circle cx="8.5" cy="9.5" r="1.5"></circle>
+                  <polyline points="21 15 16 10 5 20"></polyline>
+                </svg>
+              </div>
+              <div class="title-md">No Photos or Videos</div>
+              <p class="subtitle">Tap the + button to upload photos and videos directly into local device storage.</p>
+            </div>
+            <input id="mediaFileInput" class="hidden-input" type="file" accept="image/*,video/*" multiple />
+          </div>
+
+          <!-- TAB 3: SETTINGS -->
+          <div id="tabSettings" class="scroll-area" style="display: none;">
+            <div class="label-xs" style="margin: 4px 0 8px 4px;">Security</div>
+            <div class="settings-group">
+              <button type="button" id="btnOpenChangePw" class="glass-card settings-row">
+                <div class="settings-row-left">
+                  <div class="settings-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="7.5" cy="15.5" r="4.5"></circle>
+                      <path d="M21 2l-9.6 9.6"></path>
+                      <path d="M15.5 7.5l3 3L22 7l-3-3"></path>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style="font-size: 14px; font-weight: 600;">Change Password</div>
+                    <div class="subtitle" style="font-size: 12px;">Requires current password (3 tries max)</div>
+                  </div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+
+              <button type="button" id="btnOpenDecoyManager" class="glass-card settings-row">
+                <div class="settings-row-left">
+                  <div class="settings-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style="font-size: 14px; font-weight: 600;">Decoy Mode Selection</div>
+                    <div id="decoySummaryText" class="subtitle" style="font-size: 12px;">Choose notes &amp; files visible in recovery mode</div>
+                  </div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            </div>
+
+            <div class="label-xs" style="margin: 4px 0 8px 4px;">On-Device Storage</div>
+            <div class="glass-card" style="padding: 16px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="subtitle">Storage Mode</span>
+                <span class="badge-mono">100% Local</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="subtitle">Stored Notes</span>
+                <span id="statNotesCount" style="font-size: 13px; font-weight: 600;">0</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="subtitle">Photos &amp; Videos</span>
+                <span id="statMediaCount" style="font-size: 13px; font-weight: 600;">0</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="subtitle">Local Footprint</span>
+                <span id="statStorageSize" style="font-size: 13px; font-weight: 600;">0 KB</span>
+              </div>
+            </div>
+
+            <div class="label-xs" style="margin: 4px 0 8px 4px;">Legal &amp; Session</div>
+            <div class="settings-group">
+              <button type="button" id="settingsOpenLegal" class="glass-card settings-row">
+                <div class="settings-row-left">
+                  <div class="settings-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style="font-size: 14px; font-weight: 600;">Terms &amp; Privacy</div>
+                    <div class="subtitle" style="font-size: 12px;">Local architecture &amp; usage terms</div>
+                  </div>
+                </div>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+
+              <button type="button" id="settingsLockBtn" class="glass-card settings-row">
+                <div class="settings-row-left">
+                  <div class="settings-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="4" y="11" width="16" height="10" rx="3"></rect>
+                      <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style="font-size: 14px; font-weight: 600;">Lock Vault Immediately</div>
+                    <div class="subtitle" style="font-size: 12px;">Return to password screen</div>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Floating Action Button (Android FAB) -->
+          <button type="button" id="vaultFab" class="fab" aria-label="Add item">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+
+          <!-- Android Material 3 Liquid Glass Bottom Navigation -->
+          <nav class="bottom-nav-wrap" aria-label="Vault sections">
+            <div class="bottom-nav">
+              <button type="button" class="nav-item active" data-tab="notes">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="8" y1="13" x2="16" y2="13"></line>
+                  <line x1="8" y1="17" x2="13" y2="17"></line>
+                </svg>
+                <span>Notes</span>
+              </button>
+              <button type="button" class="nav-item" data-tab="media">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+                  <circle cx="8.5" cy="9.5" r="1.5"></circle>
+                  <polyline points="21 15 16 10 5 20"></polyline>
+                </svg>
+                <span>Media</span>
+              </button>
+              <button type="button" class="nav-item" data-tab="settings">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"></circle>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+                <span>Settings</span>
+              </button>
+            </div>
+          </nav>
+        </section>
+
+        <!-- SCREEN 3: TERMS & PRIVACY PAGE -->
+        <section id="screenLegal" class="screen" aria-label="Terms and Privacy">
+          <header class="top-bar">
+            <div class="top-bar-left">
+              <button type="button" id="btnLegalBack" class="icon-btn" aria-label="Back">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+              </button>
+              <h2 class="title-md">Terms &amp; Privacy</h2>
+            </div>
+          </header>
+
+          <div class="scroll-area-tight" style="display: flex; flex-direction: column; gap: 14px;">
+            <div class="glass-card" style="padding: 18px; display: flex; flex-direction: column; gap: 10px;">
+              <div class="label-xs">Privacy Policy</div>
+              <div class="title-md">100% Local On-Device Storage</div>
+              <p class="subtitle">
+                Monolith Vault operates entirely on your device. Your notes, photos, videos, and password hashes are stored exclusively in local device storage (IndexedDB and LocalStorage). No files, metadata, analytics, or credentials are ever transmitted to external servers.
+              </p>
+              <p class="subtitle">
+                Passwords are never stored in plain text. They are converted locally using SHA-256 cryptographic hashing prior to storage.
+              </p>
+            </div>
+
+            <div class="glass-card" style="padding: 18px; display: flex; flex-direction: column; gap: 10px;">
+              <div class="label-xs">Security Mechanics</div>
+              <div class="title-md">Lockout, Decoy &amp; Wipe</div>
+              <p class="subtitle">
+                <strong style="color: #fff;">Failed Attempt Lockout:</strong> Entering an incorrect password 5 times consecutively on the unlock screen activates a mandatory 1-hour security lockout with all touch and keyboard inputs disabled.
+              </p>
+              <p class="subtitle">
+                <strong style="color: #fff;">Decoy (Recovery) Mode:</strong> Unlocking with your decoy password opens a separate view showing only the specific notes and media items you explicitly marked for decoy visibility.
+              </p>
+              <p class="subtitle">
+                <strong style="color: #fff;">All-Reset Password:</strong> Entering your reset password on the unlock screen immediately and permanently deletes all stored notes, photos, videos, and vault configuration on this device.
+              </p>
+              <p class="subtitle">
+                <strong style="color: #fff;">Password Changes:</strong> Modifying any password in Settings requires your current password and allows a maximum of 3 attempts before locking the session.
+              </p>
+            </div>
+
+            <div class="glass-card" style="padding: 18px; display: flex; flex-direction: column; gap: 10px;">
+              <div class="label-xs">Terms of Use</div>
+              <div class="title-md">User Responsibility</div>
+              <p class="subtitle">
+                Because Monolith Vault uses zero cloud storage and zero remote accounts, forgotten passwords cannot be recovered by any third party. You are solely responsible for remembering your Primary, Decoy, and Reset passwords and maintaining personal backups of critical media.
+              </p>
+              <p class="subtitle">
+                Clearing your browser or app data on Android will also erase locally stored vault files. Use the Reset Password with caution, as formatted data cannot be restored.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- MODAL: NOTE EDITOR -->
+        <div id="noteModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="noteModalTitle">
+          <div class="sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+              <div id="noteModalTitle" class="title-md">New Note</div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" id="btnDeleteNote" class="icon-btn" style="display: none;" aria-label="Delete note" title="Delete note">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                    <path d="M10 11v6"></path>
+                    <path d="M14 11v6"></path>
+                  </svg>
+                </button>
+                <button type="button" id="btnCloseNoteModal" class="icon-btn" aria-label="Close">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+            </div>
+            <form id="noteForm" class="sheet-body" autocomplete="off">
+              <input id="noteTitleInput" class="glass-input no-icon" type="text" placeholder="Note title" required />
+              <textarea id="noteBodyInput" class="glass-textarea" placeholder="Write your private note..."></textarea>
+              <div id="noteDecoyRow" class="glass-card-subtle" style="padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                <div>
+                  <div style="font-size: 13px; font-weight: 500;">Visible in Decoy Mode</div>
+                  <div class="subtitle" style="font-size: 11.5px;">Include this note when decoy password is used</div>
+                </div>
+                <button type="button" id="noteDecoySwitch" class="switch" role="switch" aria-checked="false" aria-label="Visible in Decoy Mode"></button>
+              </div>
+              <button type="submit" class="btn-primary">Save Note</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- MODAL: CHANGE PASSWORD (3 TRIES MAX) -->
+        <div id="changePwModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="changePwTitle">
+          <div class="sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+              <div id="changePwTitle" class="title-md">Change Password</div>
+              <button type="button" id="btnCloseChangePw" class="icon-btn" aria-label="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <form id="changePwForm" class="sheet-body" autocomplete="off">
+              <div id="changePwAlert" class="alert-box"></div>
+
+              <div id="changePwTargetWrap" class="field-group">
+                <label class="field-label" for="changePwTarget">Password to Update</label>
+                <select id="changePwTarget" class="glass-input no-icon" style="appearance: none; cursor: pointer;">
+                  <option value="primary" style="background: #121215; color: #fff;">Primary Vault Password</option>
+                  <option value="decoy" style="background: #121215; color: #fff;">Decoy (Recovery) Password</option>
+                  <option value="reset" style="background: #121215; color: #fff;">All-Reset Format Password</option>
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label class="field-label" for="changePwCurrent">
+                  <span>Current Password</span>
+                  <span id="changePwTriesLabel" class="label-xs">3 tries left</span>
+                </label>
+                <div class="input-wrap">
+                  <input id="changePwCurrent" class="glass-input" type="password" placeholder="Enter current password" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="changePwCurrent" aria-label="Toggle visibility"></button>
+                </div>
+              </div>
+
+              <div class="field-group">
+                <label class="field-label" for="changePwNew">New Password</label>
+                <div class="input-wrap">
+                  <input id="changePwNew" class="glass-input" type="password" placeholder="Enter new password (min 4 chars)" minlength="4" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="changePwNew" aria-label="Toggle visibility"></button>
+                </div>
+              </div>
+
+              <div class="field-group">
+                <label class="field-label" for="changePwConfirm">Confirm New Password</label>
+                <div class="input-wrap">
+                  <input id="changePwConfirm" class="glass-input" type="password" placeholder="Confirm new password" minlength="4" required />
+                  <button type="button" class="eye-btn" data-toggle-pw="changePwConfirm" aria-label="Toggle visibility"></button>
+                </div>
+              </div>
+
+              <button type="submit" class="btn-primary">Update Password</button>
+            </form>
+          </div>
+        </div>
+
+        <!-- MODAL: DECOY SELECTION MANAGER -->
+        <div id="decoyManagerModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="decoyMgrTitle">
+          <div class="sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+              <div id="decoyMgrTitle" class="title-md">Decoy Mode Items</div>
+              <button type="button" id="btnCloseDecoyMgr" class="icon-btn" aria-label="Close">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+            <div id="decoyManagerList" class="sheet-body"></div>
+          </div>
+        </div>
+
+        <!-- MODAL: IN-PAGE CONFIRMATION -->
+        <div id="confirmModal" class="modal-backdrop center" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+          <div class="sheet" style="max-width: 340px;">
+            <div class="sheet-body" style="padding: 22px 20px; text-align: center;">
+              <div id="confirmTitle" class="title-md">Confirm Action</div>
+              <p id="confirmMessage" class="subtitle"></p>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px;">
+                <button type="button" id="btnConfirmCancel" class="btn-glass">Cancel</button>
+                <button type="button" id="btnConfirmOk" class="btn-primary">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FULLSCREEN MEDIA VIEWER -->
+        <div id="mediaViewer" class="viewer-overlay" role="dialog" aria-modal="true" aria-label="Media Viewer">
+          <header class="top-bar">
+            <div class="top-bar-left">
+              <button type="button" id="btnCloseViewer" class="icon-btn" aria-label="Back">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+              </button>
+              <div style="min-width: 0;">
+                <div id="viewerName" style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 210px;">File</div>
+                <div id="viewerMeta" class="subtitle" style="font-size: 11px;"></div>
+              </div>
+            </div>
+            <div class="top-bar-actions">
+              <button type="button" id="btnDownloadMedia" class="icon-btn" aria-label="Save to device" title="Save copy">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+              </button>
+              <button type="button" id="btnDeleteMedia" class="icon-btn" aria-label="Delete media" title="Delete">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <div id="viewerStage" class="viewer-stage"></div>
+
+          <div id="viewerDecoyFooter" class="viewer-footer">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+              <div>
+                <div style="font-size: 13px; font-weight: 500;">Visible in Decoy Mode</div>
+                <div class="subtitle" style="font-size: 11.5px;">Show this file when recovery password is entered</div>
+              </div>
+              <button type="button" id="viewerDecoySwitch" class="switch" role="switch" aria-checked="false" aria-label="Visible in Decoy Mode"></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Snackbar Toast -->
+        <div id="snackbar" class="snackbar" role="status" aria-live="polite"></div>
+      </div>
+
+      <!-- Android Gesture Bar -->
+      <div class="android-gesture-bar" aria-hidden="true">
+        <div class="gesture-pill"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      /* ---------------- Storage Keys & Constants ---------------- */
+      const CONFIG_KEY = 'monolith_vault_config_v1';
+      const SECURITY_KEY = 'monolith_vault_security_v1';
+      const DB_NAME = 'monolith_vault_db_v1';
+      const DB_VERSION = 1;
+      const MAX_UNLOCK_TRIES = 5;
+      const LOCKOUT_DURATION_MS = 60 * 60 * 1000; // 1 hour
+      const MAX_PW_CHANGE_TRIES = 3;
+
+      /* ---------------- Safe LocalStorage Wrapper ---------------- */
+      const memStore = {};
+      function safeGet(key) {
+        try {
+          const val = window.localStorage.getItem(key);
+          return val !== null ? JSON.parse(val) : null;
+        } catch (e) {
+          return memStore[key] || null;
+        }
+      }
+      function safeSet(key, val) {
+        memStore[key] = val;
+        try {
+          window.localStorage.setItem(key, JSON.stringify(val));
+        } catch (e) {
+          // Fallback silently to in-memory store
+        }
+      }
+      function safeRemove(key) {
+        delete memStore[key];
+        try {
+          window.localStorage.removeItem(key);
+        } catch (e) {}
+      }
+
+      /* ---------------- Pure-JS SHA-256 (Offline & Sandbox-Safe) ---------------- */
+      function sha256(str) {
+        const utf8 = unescape(encodeURIComponent(str));
+        const words = [];
+        for (let i = 0; i < utf8.length; i++) {
+          words[i >> 2] |= (utf8.charCodeAt(i) & 0xff) << (24 - (i % 4) * 8);
+        }
+        const bitLen = utf8.length * 8;
+        words[bitLen >> 5] |= 0x80 << (24 - (bitLen % 32));
+        words[(((bitLen + 64) >> 9) << 4) + 15] = bitLen;
+
+        const K = [
+          0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+          0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+          0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+          0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+          0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+          0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+          0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+          0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        ];
+        let H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+        const W = new Array(64);
+        const rotr = (n, x) => (x >>> n) | (x << (32 - n));
+
+        for (let i = 0; i < words.length; i += 16) {
+          let [a, b, c, d, e, f, g, h] = H;
+          for (let t = 0; t < 64; t++) {
+            if (t < 16) {
+              W[t] = words[i + t] | 0;
+            } else {
+              const s0 = rotr(7, W[t - 15]) ^ rotr(18, W[t - 15]) ^ (W[t - 15] >>> 3);
+              const s1 = rotr(17, W[t - 2]) ^ rotr(19, W[t - 2]) ^ (W[t - 2] >>> 10);
+              W[t] = (W[t - 16] + s0 + W[t - 7] + s1) | 0;
+            }
+            const S1 = rotr(6, e) ^ rotr(11, e) ^ rotr(25, e);
+            const ch = (e & f) ^ (~e & g);
+            const temp1 = (h + S1 + ch + K[t] + W[t]) | 0;
+            const S0 = rotr(2, a) ^ rotr(13, a) ^ rotr(22, a);
+            const maj = (a & b) ^ (a & c) ^ (b & c);
+            const temp2 = (S0 + maj) | 0;
+            h = g; g = f; f = e; e = (d + temp1) | 0;
+            d = c; c = b; b = a; a = (temp1 + temp2) | 0;
+          }
+          H = [
+            (H[0] + a) | 0, (H[1] + b) | 0, (H[2] + c) | 0, (H[3] + d) | 0,
+            (H[4] + e) | 0, (H[5] + f) | 0, (H[6] + g) | 0, (H[7] + h) | 0
+          ];
+        }
+        return H.map(v => (v >>> 0).toString(16).padStart(8, '0')).join('');
+      }
+
+      /* ---------------- Local IndexedDB Engine (with Memory Fallback) ---------------- */
+      let dbInstance = null;
+      const memDB = { notes: [], media: [] };
+
+      function openDB() {
+        return new Promise((resolve) => {
+          if (dbInstance) return resolve(dbInstance);
+          if (!('indexedDB' in window)) return resolve(null);
+          try {
+            const req = indexedDB.open(DB_NAME, DB_VERSION);
+            req.onupgradeneeded = (e) => {
+              const db = e.target.result;
+              if (!db.objectStoreNames.contains('notes')) {
+                db.createObjectStore('notes', { keyPath: 'id' });
+              }
+              if (!db.objectStoreNames.contains('media')) {
+                db.createObjectStore('media', { keyPath: 'id' });
+              }
+            };
+            req.onsuccess = (e) => {
+              dbInstance = e.target.result;
+              resolve(dbInstance);
+            };
+            req.onerror = () => resolve(null);
+          } catch (err) {
+            resolve(null);
+          }
+        });
+      }
+
+      async function dbGetAll(storeName) {
+        const db = await openDB();
+        if (!db) return [...memDB[storeName]];
+        return new Promise((resolve) => {
+          try {
+            const tx = db.transaction(storeName, 'readonly');
+            const req = tx.objectStore(storeName).getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => resolve([...memDB[storeName]]);
+          } catch (e) {
+            resolve([...memDB[storeName]]);
+          }
+        });
+      }
+
+      async function dbPut(storeName, item) {
+        const idx = memDB[storeName].findIndex(x => x.id === item.id);
+        if (idx >= 0) memDB[storeName][idx] = item;
+        else memDB[storeName].push(item);
+
+        const db = await openDB();
+        if (!db) return;
+        return new Promise((resolve) => {
+          try {
+            const tx = db.transaction(storeName, 'readwrite');
+            tx.objectStore(storeName).put(item);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+          } catch (e) {
+            resolve();
+          }
+        });
+      }
+
+      async function dbDelete(storeName, id) {
+        memDB[storeName] = memDB[storeName].filter(x => x.id !== id);
+        const db = await openDB();
+        if (!db) return;
+        return new Promise((resolve) => {
+          try {
+            const tx = db.transaction(storeName, 'readwrite');
+            tx.objectStore(storeName).delete(id);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+          } catch (e) {
+            resolve();
+          }
+        });
+      }
+
+      async function dbClearAll() {
+        memDB.notes = [];
+        memDB.media = [];
+        const db = await openDB();
+        if (!db) return;
+        return new Promise((resolve) => {
+          try {
+            const tx = db.transaction(['notes', 'media'], 'readwrite');
+            tx.objectStore('notes').clear();
+            tx.objectStore('media').clear();
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+          } catch (e) {
+            resolve();
+          }
+        });
+      }
+
+      /* ---------------- App State ---------------- */
+      const state = {
+        mode: null, // 'primary' | 'decoy' | null
+        activeScreen: 'setup', // 'setup' | 'lock' | 'vault' | 'legal'
+        previousScreen: 'setup',
+        activeTab: 'notes', // 'notes' | 'media' | 'settings'
+        mediaFilter: 'all', // 'all' | 'image' | 'video'
+        searchQuery: '',
+        notes: [],
+        media: [],
+        objectUrls: new Map(),
+        editingNoteId: null,
+        noteDecoyFlag: false,
+        viewingMediaId: null,
+        pwChangeTriesLeft: MAX_PW_CHANGE_TRIES,
+        lockoutInterval: null,
+        confirmCallback: null,
+        snackbarTimer: null
+      };
+
+      /* ---------------- DOM References ---------------- */
+      const els = {
+        statusClock: document.getElementById('statusClock'),
+        lockoutOverlay: document.getElementById('lockoutOverlay'),
+        lockoutTimer: document.getElementById('lockoutTimer'),
+        screens: {
+          setup: document.getElementById('screenSetup'),
+          lock: document.getElementById('screenLock'),
+          vault: document.getElementById('screenVault'),
+          legal: document.getElementById('screenLegal')
+        },
+        setupForm: document.getElementById('setupForm'),
+        setupAlert: document.getElementById('setupAlert'),
+        setupPrimary: document.getElementById('setupPrimary'),
+        setupPrimaryConfirm: document.getElementById('setupPrimaryConfirm'),
+        setupDecoy: document.getElementById('setupDecoy'),
+        setupDecoyConfirm: document.getElementById('setupDecoyConfirm'),
+        setupReset: document.getElementById('setupReset'),
+        setupResetConfirm: document.getElementById('setupResetConfirm'),
+        setupAgree: document.getElementById('setupAgree'),
+        setupOpenLegal: document.getElementById('setupOpenLegal'),
+
+        unlockForm: document.getElementById('unlockForm'),
+        unlockAlert: document.getElementById('unlockAlert'),
+        unlockPassword: document.getElementById('unlockPassword'),
+        unlockAttemptDots: document.getElementById('unlockAttemptDots'),
+        unlockAttemptLabel: document.getElementById('unlockAttemptLabel'),
+        lockOpenLegal: document.getElementById('lockOpenLegal'),
+
+        vaultHeaderTitle: document.getElementById('vaultHeaderTitle'),
+        btnToggleSearch: document.getElementById('btnToggleSearch'),
+        btnLockNow: document.getElementById('btnLockNow'),
+        searchBarWrap: document.getElementById('searchBarWrap'),
+        vaultSearchInput: document.getElementById('vaultSearchInput'),
+        tabNotes: document.getElementById('tabNotes'),
+        tabMedia: document.getElementById('tabMedia'),
+        tabSettings: document.getElementById('tabSettings'),
+        notesList: document.getElementById('notesList'),
+        notesEmpty: document.getElementById('notesEmpty'),
+        mediaGrid: document.getElementById('mediaGrid'),
+        mediaEmpty: document.getElementById('mediaEmpty'),
+        mediaFileInput: document.getElementById('mediaFileInput'),
+        vaultFab: document.getElementById('vaultFab'),
+
+        btnOpenChangePw: document.getElementById('btnOpenChangePw'),
+        btnOpenDecoyManager: document.getElementById('btnOpenDecoyManager'),
+        decoySummaryText: document.getElementById('decoySummaryText'),
+        statNotesCount: document.getElementById('statNotesCount'),
+        statMediaCount: document.getElementById('statMediaCount'),
+        statStorageSize: document.getElementById('statStorageSize'),
+        settingsOpenLegal: document.getElementById('settingsOpenLegal'),
+        settingsLockBtn: document.getElementById('settingsLockBtn'),
+        btnLegalBack: document.getElementById('btnLegalBack'),
+
+        noteModal: document.getElementById('noteModal'),
+        noteModalTitle: document.getElementById('noteModalTitle'),
+        noteForm: document.getElementById('noteForm'),
+        noteTitleInput: document.getElementById('noteTitleInput'),
+        noteBodyInput: document.getElementById('noteBodyInput'),
+        noteDecoyRow: document.getElementById('noteDecoyRow'),
+        noteDecoySwitch: document.getElementById('noteDecoySwitch'),
+        btnDeleteNote: document.getElementById('btnDeleteNote'),
+        btnCloseNoteModal: document.getElementById('btnCloseNoteModal'),
+
+        changePwModal: document.getElementById('changePwModal'),
+        changePwForm: document.getElementById('changePwForm'),
+        changePwAlert: document.getElementById('changePwAlert'),
+        changePwTargetWrap: document.getElementById('changePwTargetWrap'),
+        changePwTarget: document.getElementById('changePwTarget'),
+        changePwCurrent: document.getElementById('changePwCurrent'),
+        changePwNew: document.getElementById('changePwNew'),
+        changePwConfirm: document.getElementById('changePwConfirm'),
+        changePwTriesLabel: document.getElementById('changePwTriesLabel'),
+        btnCloseChangePw: document.getElementById('btnCloseChangePw'),
+
+        decoyManagerModal: document.getElementById('decoyManagerModal'),
+        decoyManagerList: document.getElementById('decoyManagerList'),
+        btnCloseDecoyMgr: document.getElementById('btnCloseDecoyMgr'),
+
+        confirmModal: document.getElementById('confirmModal'),
+        confirmTitle: document.getElementById('confirmTitle'),
+        confirmMessage: document.getElementById('confirmMessage'),
+        btnConfirmCancel: document.getElementById('btnConfirmCancel'),
+        btnConfirmOk: document.getElementById('btnConfirmOk'),
+
+        mediaViewer: document.getElementById('mediaViewer'),
+        btnCloseViewer: document.getElementById('btnCloseViewer'),
+        viewerName: document.getElementById('viewerName'),
+        viewerMeta: document.getElementById('viewerMeta'),
+        viewerStage: document.getElementById('viewerStage'),
+        viewerDecoyFooter: document.getElementById('viewerDecoyFooter'),
+        viewerDecoySwitch: document.getElementById('viewerDecoySwitch'),
+        btnDownloadMedia: document.getElementById('btnDownloadMedia'),
+        btnDeleteMedia: document.getElementById('btnDeleteMedia'),
+
+        snackbar: document.getElementById('snackbar')
+      };
+
+      /* ---------------- Helpers ---------------- */
+      function showToast(msg) {
+        els.snackbar.textContent = msg;
+        els.snackbar.classList.add('show');
+        if (state.snackbarTimer) clearTimeout(state.snackbarTimer);
+        state.snackbarTimer = setTimeout(() => {
+          els.snackbar.classList.remove('show');
+        }, 2800);
+      }
+
+      function showAlert(el, msg) {
+        if (!msg) {
+          el.textContent = '';
+          el.classList.remove('show');
+        } else {
+          el.textContent = msg;
+          el.classList.add('show');
+        }
+      }
+
+      function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return '0 KB';
+        if (bytes < 1024 * 1024) return Math.max(1, Math.round(bytes / 1024)) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+      }
+
+      function formatDate(ts) {
+        try {
+          return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        } catch (e) {
+          return '';
+        }
+      }
+
+      function uid() {
+        return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+      }
+
+      function updateClock() {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        els.statusClock.textContent = hh + ':' + mm;
+      }
+
+      /* ---------------- Eye Toggle Icons ---------------- */
+      const EYE_OPEN_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+      const EYE_OFF_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-7 0-11-7-11-7a21.77 21.77 0 0 1 5.06-5.94"></path><path d="M9.9 4.24A9.12 9.12 0 0 1 12 5c7 0 11 7 11 7a21.72 21.72 0 0 1-3.17 4.44"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+
+      function initPasswordToggles() {
+        document.querySelectorAll('[data-toggle-pw]').forEach((btn) => {
+          btn.innerHTML = EYE_OPEN_SVG;
+          btn.addEventListener('click', () => {
+            const target = document.getElementById(btn.getAttribute('data-toggle-pw'));
+            if (!target) return;
+            const showing = target.type === 'text';
+            target.type = showing ? 'password' : 'text';
+            btn.innerHTML = showing ? EYE_OPEN_SVG : EYE_OFF_SVG;
+          });
+        });
+      }
+
+      /* ---------------- 1-Hour Touch-Disabled Lockout System ---------------- */
+      let lockoutBlockerAttached = false;
+      function blockAllInput(e) {
+        if (isLockedOut()) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return false;
+        }
+      }
+
+      function setTouchDisabled(disabled) {
+        const events = ['click', 'touchstart', 'touchmove', 'touchend', 'pointerdown', 'keydown', 'contextmenu'];
+        if (disabled && !lockoutBlockerAttached) {
+          events.forEach(ev => window.addEventListener(ev, blockAllInput, { capture: true, passive: false }));
+          lockoutBlockerAttached = true;
+        } else if (!disabled && lockoutBlockerAttached) {
+          events.forEach(ev => window.removeEventListener(ev, blockAllInput, { capture: true }));
+          lockoutBlockerAttached = false;
+        }
+      }
+
+      function getSecurityState() {
+        return safeGet(SECURITY_KEY) || { failedAttempts: 0, lockoutUntil: 0 };
+      }
+
+      function saveSecurityState(sec) {
+        safeSet(SECURITY_KEY, sec);
+      }
+
+      function isLockedOut() {
+        const sec = getSecurityState();
+        return sec.lockoutUntil && Date.now() < sec.lockoutUntil;
+      }
+
+      function checkAndRenderLockout() {
+        const sec = getSecurityState();
+        if (state.lockoutInterval) {
+          clearInterval(state.lockoutInterval);
+          state.lockoutInterval = null;
+        }
+
+        if (sec.lockoutUntil && Date.now() < sec.lockoutUntil) {
+          els.lockoutOverlay.classList.add('active');
+          setTouchDisabled(true);
+          if (document.activeElement && document.activeElement.blur) {
+            document.activeElement.blur();
+          }
+
+          const tick = () => {
+            const remaining = Math.max(0, sec.lockoutUntil - Date.now());
+            if (remaining <= 0) {
+              clearInterval(state.lockoutInterval);
+              state.lockoutInterval = null;
+              saveSecurityState({ failedAttempts: 0, lockoutUntil: 0 });
+              els.lockoutOverlay.classList.remove('active');
+              setTouchDisabled(false);
+              renderUnlockAttempts();
+              showAlert(els.unlockAlert, '');
+              return;
+            }
+            const totalSec = Math.ceil(remaining / 1000);
+            const mins = String(Math.floor(totalSec / 60)).padStart(2, '0');
+            const secs = String(totalSec % 60).padStart(2, '0');
+            els.lockoutTimer.textContent = mins + ':' + secs;
+          };
+          tick();
+          state.lockoutInterval = setInterval(tick, 1000);
+        } else {
+          if (sec.lockoutUntil && Date.now() >= sec.lockoutUntil) {
+            saveSecurityState({ failedAttempts: 0, lockoutUntil: 0 });
+          }
+          els.lockoutOverlay.classList.remove('active');
+          setTouchDisabled(false);
+        }
+      }
+
+      function renderUnlockAttempts() {
+        const sec = getSecurityState();
+        const used = Math.min(MAX_UNLOCK_TRIES, sec.failedAttempts || 0);
+        const dots = els.unlockAttemptDots.querySelectorAll('.attempt-dot');
+        dots.forEach((dot, idx) => {
+          dot.classList.toggle('used', idx < used);
+        });
+        const remaining = MAX_UNLOCK_TRIES - used;
+        els.unlockAttemptLabel.textContent = remaining === MAX_UNLOCK_TRIES
+          ? '5 attempts before 1-hour lock'
+          : remaining + (remaining === 1 ? ' attempt remaining before 1-hour lock' : ' attempts remaining before 1-hour lock');
+      }
+
+      /* ---------------- Navigation ---------------- */
+      function showScreen(name) {
+        if (name === 'legal') {
+          state.previousScreen = state.activeScreen;
+        }
+        state.activeScreen = name;
+        Object.keys(els.screens).forEach((k) => {
+          els.screens[k].classList.toggle('active', k === name);
+        });
+        if (name === 'lock') {
+          els.unlockPassword.value = '';
+          renderUnlockAttempts();
+          checkAndRenderLockout();
+        }
+      }
+
+      function switchTab(tab) {
+        state.activeTab = tab;
+        els.tabNotes.style.display = tab === 'notes' ? 'block' : 'none';
+        els.tabMedia.style.display = tab === 'media' ? 'block' : 'none';
+        els.tabSettings.style.display = tab === 'settings' ? 'block' : 'none';
+
+        document.querySelectorAll('.nav-item').forEach((btn) => {
+          btn.classList.toggle('active', btn.getAttribute('data-tab') === tab);
+        });
+
+        const titles = { notes: 'Notes', media: 'Photos & Videos', settings: 'Settings' };
+        els.vaultHeaderTitle.textContent = titles[tab] || 'Vault';
+
+        const isSearchable = tab === 'notes' || tab === 'media';
+        els.btnToggleSearch.style.display = isSearchable ? 'flex' : 'none';
+        if (!isSearchable) {
+          els.searchBarWrap.style.display = 'none';
+          state.searchQuery = '';
+          els.vaultSearchInput.value = '';
+        }
+
+        els.vaultFab.classList.toggle('hidden', tab === 'settings');
+        if (tab === 'settings') {
+          renderSettings();
+        }
+      }
+
+      /* ---------------- Vault Data Loading & Filtering ---------------- */
+      async function loadVaultData() {
+        const [notes, media] = await Promise.all([dbGetAll('notes'), dbGetAll('media')]);
+        state.notes = notes.sort((a, b) => b.updatedAt - a.updatedAt);
+        state.media = media.sort((a, b) => b.createdAt - a.createdAt);
+        renderNotes();
+        renderMedia();
+        renderSettings();
+      }
+
+      function getVisibleNotes() {
+        let list = state.notes;
+        if (state.mode === 'decoy') {
+          list = list.filter(n => n.decoyVisible === true);
+        }
+        if (state.searchQuery.trim()) {
+          const q = state.searchQuery.trim().toLowerCase();
+          list = list.filter(n =>
+            (n.title || '').toLowerCase().includes(q) ||
+            (n.body || '').toLowerCase().includes(q)
+          );
+        }
+        return list;
+      }
+
+      function getVisibleMedia() {
+        let list = state.media;
+        if (state.mode === 'decoy') {
+          list = list.filter(m => m.decoyVisible === true);
+        }
+        if (state.mediaFilter !== 'all') {
+          list = list.filter(m => m.kind === state.mediaFilter);
+        }
+        if (state.searchQuery.trim()) {
+          const q = state.searchQuery.trim().toLowerCase();
+          list = list.filter(m => (m.name || '').toLowerCase().includes(q));
+        }
+        return list;
+      }
+
+      function getMediaUrl(item) {
+        if (state.objectUrls.has(item.id)) return state.objectUrls.get(item.id);
+        let url = '';
+        if (item.blob instanceof Blob) {
+          url = URL.createObjectURL(item.blob);
+        } else if (item.dataUrl) {
+          url = item.dataUrl;
+        }
+        if (url) state.objectUrls.set(item.id, url);
+        return url;
+      }
+
+      function revokeAllMediaUrls() {
+        state.objectUrls.forEach((url) => {
+          if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+        });
+        state.objectUrls.clear();
+      }
+
+      /* ---------------- Render Notes ---------------- */
+      function renderNotes() {
+        const list = getVisibleNotes();
+        els.notesList.innerHTML = '';
+        els.notesEmpty.style.display = list.length === 0 ? 'flex' : 'none';
+
+        list.forEach((note) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'glass-card note-card';
+
+          const header = document.createElement('div');
+          header.className = 'note-card-header';
+
+          const title = document.createElement('div');
+          title.className = 'note-title';
+          title.textContent = note.title || 'Untitled';
+          header.appendChild(title);
+
+          if (state.mode === 'primary' && note.decoyVisible) {
+            const badge = document.createElement('span');
+            badge.className = 'badge-mono';
+            badge.textContent = 'Decoy';
+            header.appendChild(badge);
+          }
+
+          const preview = document.createElement('div');
+          preview.className = 'note-preview';
+          preview.textContent = note.body || 'Empty note';
+
+          const meta = document.createElement('div');
+          meta.className = 'note-meta';
+          meta.textContent = 'Updated ' + formatDate(note.updatedAt);
+
+          btn.appendChild(header);
+          btn.appendChild(preview);
+          btn.appendChild(meta);
+          btn.addEventListener('click', () => openNoteModal(note));
+          els.notesList.appendChild(btn);
+        });
+      }
+
+      /* ---------------- Render Media ---------------- */
+      function renderMedia() {
+        const list = getVisibleMedia();
+        els.mediaGrid.innerHTML = '';
+        els.mediaEmpty.style.display = list.length === 0 ? 'flex' : 'none';
+
+        list.forEach((item) => {
+          const tile = document.createElement('button');
+          tile.type = 'button';
+          tile.className = 'media-tile';
+          tile.setAttribute('aria-label', item.name || 'Media file');
+
+          const url = getMediaUrl(item);
+          if (item.kind === 'video') {
+            const vid = document.createElement('video');
+            vid.src = url;
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.preload = 'metadata';
+            tile.appendChild(vid);
+
+            const pill = document.createElement('span');
+            pill.className = 'media-type-pill';
+            pill.innerHTML = '<svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><span>VID</span>';
+            tile.appendChild(pill);
+          } else {
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = item.name || 'Photo';
+            tile.appendChild(img);
+          }
+
+          if (state.mode === 'primary' && item.decoyVisible) {
+            const dot = document.createElement('span');
+            dot.className = 'media-decoy-dot';
+            dot.title = 'Visible in Decoy Mode';
+            dot.textContent = 'D';
+            tile.appendChild(dot);
+          }
+
+          tile.addEventListener('click', () => openMediaViewer(item));
+          els.mediaGrid.appendChild(tile);
+        });
+      }
+
+      /* ---------------- Render Settings ---------------- */
+      function renderSettings() {
+        const visibleNotes = state.mode === 'decoy' ? state.notes.filter(n => n.decoyVisible) : state.notes;
+        const visibleMedia = state.mode === 'decoy' ? state.media.filter(m => m.decoyVisible) : state.media;
+
+        els.statNotesCount.textContent = String(visibleNotes.length);
+        els.statMediaCount.textContent = String(visibleMedia.length);
+
+        let totalBytes = 0;
+        visibleNotes.forEach(n => { totalBytes += (n.title.length + n.body.length) * 2; });
+        visibleMedia.forEach(m => { totalBytes += m.size || 0; });
+        els.statStorageSize.textContent = formatBytes(totalBytes);
+
+        // Hide Decoy Manager in Decoy mode so Decoy Vault looks completely normal
+        if (state.mode === 'primary') {
+          els.btnOpenDecoyManager.style.display = 'flex';
+          const dNotes = state.notes.filter(n => n.decoyVisible).length;
+          const dMedia = state.media.filter(m => m.decoyVisible).length;
+          els.decoySummaryText.textContent = dNotes + ' note' + (dNotes === 1 ? '' : 's') + ', ' + dMedia + ' file' + (dMedia === 1 ? '' : 's') + ' selected';
+        } else {
+          els.btnOpenDecoyManager.style.display = 'none';
+        }
+      }
+
+      /* ---------------- Note Modal Actions ---------------- */
+      function openNoteModal(note) {
+        if (note) {
+          state.editingNoteId = note.id;
+          state.noteDecoyFlag = !!note.decoyVisible;
+          els.noteModalTitle.textContent = 'Edit Note';
+          els.noteTitleInput.value = note.title || '';
+          els.noteBodyInput.value = note.body || '';
+          els.btnDeleteNote.style.display = 'flex';
+        } else {
+          state.editingNoteId = null;
+          state.noteDecoyFlag = state.mode === 'decoy';
+          els.noteModalTitle.textContent = 'New Note';
+          els.noteTitleInput.value = '';
+          els.noteBodyInput.value = '';
+          els.btnDeleteNote.style.display = 'none';
+        }
+
+        els.noteDecoyRow.style.display = state.mode === 'primary' ? 'flex' : 'none';
+        els.noteDecoySwitch.classList.toggle('on', state.noteDecoyFlag);
+        els.noteDecoySwitch.setAttribute('aria-checked', String(state.noteDecoyFlag));
+        els.noteModal.classList.add('open');
+      }
+
+      function closeNoteModal() {
+        els.noteModal.classList.remove('open');
+      }
+
+      /* ---------------- Media Upload & Viewer Actions ---------------- */
+      async function handleMediaUpload(fileList) {
+        const files = Array.from(fileList || []);
+        if (!files.length) return;
+        let added = 0;
+
+        for (const file of files) {
+          const isVideo = file.type.startsWith('video/');
+          const isImage = file.type.startsWith('image/');
+          if (!isVideo && !isImage) continue;
+
+          const item = {
+            id: uid(),
+            name: file.name || (isVideo ? 'Video' : 'Photo'),
+            mime: file.type,
+            kind: isVideo ? 'video' : 'image',
+            size: file.size || 0,
+            blob: file,
+            decoyVisible: state.mode === 'decoy',
+            createdAt: Date.now()
+          };
+          await dbPut('media', item);
+          added++;
+        }
+
+        els.mediaFileInput.value = '';
+        if (added > 0) {
+          await loadVaultData();
+          showToast(added + (added === 1 ? ' file saved locally' : ' files saved locally'));
+        } else {
+          showToast('Please select photo or video files');
+        }
+      }
+
+      function openMediaViewer(item) {
+        state.viewingMediaId = item.id;
+        els.viewerName.textContent = item.name || 'Media';
+        els.viewerMeta.textContent = formatBytes(item.size) + ' • ' + formatDate(item.createdAt);
+        els.viewerStage.innerHTML = '';
+
+        const url = getMediaUrl(item);
+        if (item.kind === 'video') {
+          const vid = document.createElement('video');
+          vid.src = url;
+          vid.controls = true;
+          vid.playsInline = true;
+          els.viewerStage.appendChild(vid);
+        } else {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = item.name || 'Photo';
+          els.viewerStage.appendChild(img);
+        }
+
+        if (state.mode === 'primary') {
+          els.viewerDecoyFooter.style.display = 'flex';
+          const on = !!item.decoyVisible;
+          els.viewerDecoySwitch.classList.toggle('on', on);
+          els.viewerDecoySwitch.setAttribute('aria-checked', String(on));
+        } else {
+          els.viewerDecoyFooter.style.display = 'none';
+        }
+
+        els.mediaViewer.classList.add('open');
+      }
+
+      function closeMediaViewer() {
+        const vid = els.viewerStage.querySelector('video');
+        if (vid) vid.pause();
+        els.viewerStage.innerHTML = '';
+        state.viewingMediaId = null;
+        els.mediaViewer.classList.remove('open');
+      }
+
+      /* ---------------- Confirmation Modal ---------------- */
+      function openConfirm(title, message, okLabel, callback) {
+        els.confirmTitle.textContent = title;
+        els.confirmMessage.textContent = message;
+        els.btnConfirmOk.textContent = okLabel || 'Confirm';
+        state.confirmCallback = callback;
+        els.confirmModal.classList.add('open');
+      }
+
+      function closeConfirm() {
+        els.confirmModal.classList.remove('open');
+        state.confirmCallback = null;
+      }
+
+      /* ---------------- Change Password Modal (3 Tries Limit) ---------------- */
+      function openChangePwModal() {
+        state.pwChangeTriesLeft = MAX_PW_CHANGE_TRIES;
+        els.changePwForm.reset();
+        showAlert(els.changePwAlert, '');
+        els.changePwTriesLabel.textContent = state.pwChangeTriesLeft + ' tries left';
+        els.changePwTargetWrap.style.display = state.mode === 'primary' ? 'flex' : 'none';
+        if (state.mode === 'decoy') {
+          els.changePwTarget.value = 'decoy';
+        }
+        els.changePwModal.classList.add('open');
+      }
+
+      function closeChangePwModal() {
+        els.changePwModal.classList.remove('open');
+      }
+
+      /* ---------------- Decoy Manager Modal ---------------- */
+      function openDecoyManager() {
+        els.decoyManagerList.innerHTML = '';
+        if (state.notes.length === 0 && state.media.length === 0) {
+          const p = document.createElement('p');
+          p.className = 'subtitle';
+          p.style.textAlign = 'center';
+          p.style.padding = '20px 8px';
+          p.textContent = 'No notes or media saved yet. Add items to your vault first, then select which ones appear in Decoy Mode.';
+          els.decoyManagerList.appendChild(p);
+        } else {
+          if (state.notes.length > 0) {
+            const lbl = document.createElement('div');
+            lbl.className = 'label-xs';
+            lbl.textContent = 'Notes';
+            els.decoyManagerList.appendChild(lbl);
+
+            state.notes.forEach((n) => {
+              const row = document.createElement('div');
+              row.className = 'glass-card-subtle';
+              row.style.cssText = 'padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;';
+
+              const info = document.createElement('div');
+              info.style.minWidth = '0';
+              const t = document.createElement('div');
+              t.style.cssText = 'font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+              t.textContent = n.title || 'Untitled';
+              info.appendChild(t);
+
+              const sw = document.createElement('button');
+              sw.type = 'button';
+              sw.className = 'switch' + (n.decoyVisible ? ' on' : '');
+              sw.setAttribute('role', 'switch');
+              sw.setAttribute('aria-checked', String(!!n.decoyVisible));
+              sw.addEventListener('click', async () => {
+                n.decoyVisible = !n.decoyVisible;
+                sw.classList.toggle('on', n.decoyVisible);
+                sw.setAttribute('aria-checked', String(n.decoyVisible));
+                await dbPut('notes', n);
+                renderNotes();
+                renderSettings();
+              });
+
+              row.appendChild(info);
+              row.appendChild(sw);
+              els.decoyManagerList.appendChild(row);
+            });
+          }
+
+          if (state.media.length > 0) {
+            const lbl = document.createElement('div');
+            lbl.className = 'label-xs';
+            lbl.style.marginTop = '6px';
+            lbl.textContent = 'Photos & Videos';
+            els.decoyManagerList.appendChild(lbl);
+
+            state.media.forEach((m) => {
+              const row = document.createElement('div');
+              row.className = 'glass-card-subtle';
+              row.style.cssText = 'padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;';
+
+              const info = document.createElement('div');
+              info.style.minWidth = '0';
+              const t = document.createElement('div');
+              t.style.cssText = 'font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;';
+              t.textContent = m.name || 'Media';
+              const s = document.createElement('div');
+              s.className = 'subtitle';
+              s.style.fontSize = '11px';
+              s.textContent = (m.kind === 'video' ? 'Video' : 'Photo') + ' • ' + formatBytes(m.size);
+              info.appendChild(t);
+              info.appendChild(s);
+
+              const sw = document.createElement('button');
+              sw.type = 'button';
+              sw.className = 'switch' + (m.decoyVisible ? ' on' : '');
+              sw.setAttribute('role', 'switch');
+              sw.setAttribute('aria-checked', String(!!m.decoyVisible));
+              sw.addEventListener('click', async () => {
+                m.decoyVisible = !m.decoyVisible;
+                sw.classList.toggle('on', m.decoyVisible);
+                sw.setAttribute('aria-checked', String(m.decoyVisible));
+                await dbPut('media', m);
+                renderMedia();
+                renderSettings();
+              });
+
+              row.appendChild(info);
+              row.appendChild(sw);
+              els.decoyManagerList.appendChild(row);
+            });
+          }
+        }
+        els.decoyManagerModal.classList.add('open');
+      }
+
+      /* ---------------- Lock & Full Wipe ---------------- */
+      function lockVault() {
+        closeNoteModal();
+        closeChangePwModal();
+        closeMediaViewer();
+        els.decoyManagerModal.classList.remove('open');
+        closeConfirm();
+        state.mode = null;
+        state.searchQuery = '';
+        els.vaultSearchInput.value = '';
+        els.searchBarWrap.style.display = 'none';
+        showAlert(els.unlockAlert, '');
+        showScreen('lock');
+      }
+
+      async function executeFullReset() {
+        revokeAllMediaUrls();
+        await dbClearAll();
+        safeRemove(CONFIG_KEY);
+        safeRemove(SECURITY_KEY);
+        state.mode = null;
+        state.notes = [];
+        state.media = [];
+        els.setupForm.reset();
+        showAlert(els.setupAlert, 'Reset password accepted. All notes, photos, videos, and vault keys have been permanently formatted.');
+        showScreen('setup');
+      }
+
+      /* ---------------- Event Listeners ---------------- */
+      function bindEvents() {
+        // First-time Setup Submit
+        els.setupForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          showAlert(els.setupAlert, '');
+
+          const p1 = els.setupPrimary.value;
+          const p1c = els.setupPrimaryConfirm.value;
+          const d1 = els.setupDecoy.value;
+          const d1c = els.setupDecoyConfirm.value;
+          const r1 = els.setupReset.value;
+          const r1c = els.setupResetConfirm.value;
+
+          if (p1.length < 4 || d1.length < 4 || r1.length < 4) {
+            return showAlert(els.setupAlert, 'All three passwords must be at least 4 characters long.');
+          }
+          if (p1 !== p1c) return showAlert(els.setupAlert, 'Primary password entries do not match.');
+          if (d1 !== d1c) return showAlert(els.setupAlert, 'Decoy password entries do not match.');
+          if (r1 !== r1c) return showAlert(els.setupAlert, 'Reset password entries do not match.');
+          if (p1 === d1 || p1 === r1 || d1 === r1) {
+            return showAlert(els.setupAlert, 'Primary, Decoy, and Reset passwords must all be different from each other.');
+          }
+          if (!els.setupAgree.checked) {
+            return showAlert(els.setupAlert, 'Please accept the Terms & Privacy before creating your vault.');
+          }
+
+          const config = {
+            initialized: true,
+            createdAt: Date.now(),
+            primaryHash: sha256(p1),
+            decoyHash: sha256(d1),
+            resetHash: sha256(r1)
+          };
+          safeSet(CONFIG_KEY, config);
+          saveSecurityState({ failedAttempts: 0, lockoutUntil: 0 });
+          els.setupForm.reset();
+
+          state.mode = 'primary';
+          await loadVaultData();
+          switchTab('notes');
+          showScreen('vault');
+          showToast('Local vault created');
+        });
+
+        // Unlock Form Submit
+        els.unlockForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          if (isLockedOut()) return;
+
+          const config = safeGet(CONFIG_KEY);
+          if (!config || !config.initialized) {
+            return showScreen('setup');
+          }
+
+          const entered = els.unlockPassword.value;
+          const hash = sha256(entered);
+          els.unlockPassword.value = '';
+
+          if (hash === config.primaryHash) {
+            saveSecurityState({ failedAttempts: 0, lockoutUntil: 0 });
+            showAlert(els.unlockAlert, '');
+            state.mode = 'primary';
+            await loadVaultData();
+            switchTab('notes');
+            showScreen('vault');
+            return;
+          }
+
+          if (hash === config.decoyHash) {
+            saveSecurityState({ failedAttempts: 0, lockoutUntil: 0 });
+            showAlert(els.unlockAlert, '');
+            state.mode = 'decoy';
+            await loadVaultData();
+            switchTab('notes');
+            showScreen('vault');
+            return;
+          }
+
+          if (hash === config.resetHash) {
+            await executeFullReset();
+            return;
+          }
+
+          // Incorrect password
+          const sec = getSecurityState();
+          sec.failedAttempts = (sec.failedAttempts || 0) + 1;
+
+          if (sec.failedAttempts >= MAX_UNLOCK_TRIES) {
+            sec.lockoutUntil = Date.now() + LOCKOUT_DURATION_MS;
+            saveSecurityState(sec);
+            renderUnlockAttempts();
+            checkAndRenderLockout();
+          } else {
+            saveSecurityState(sec);
+            renderUnlockAttempts();
+            const left = MAX_UNLOCK_TRIES - sec.failedAttempts;
+            showAlert(els.unlockAlert, 'Incorrect password. ' + left + (left === 1 ? ' try remaining.' : ' tries remaining.'));
+          }
+        });
+
+        // Bottom Navigation
+        document.querySelectorAll('.nav-item').forEach((btn) => {
+          btn.addEventListener('click', () => switchTab(btn.getAttribute('data-tab')));
+        });
+
+        // Media Filter Chips
+        document.querySelectorAll('[data-media-filter]').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            state.mediaFilter = chip.getAttribute('data-media-filter');
+            document.querySelectorAll('[data-media-filter]').forEach(c => c.classList.toggle('active', c === chip));
+            renderMedia();
+          });
+        });
+
+        // Search Toggle & Input
+        els.btnToggleSearch.addEventListener('click', () => {
+          const showing = els.searchBarWrap.style.display === 'block';
+          els.searchBarWrap.style.display = showing ? 'none' : 'block';
+          if (showing) {
+            state.searchQuery = '';
+            els.vaultSearchInput.value = '';
+            renderNotes();
+            renderMedia();
+          } else {
+            els.vaultSearchInput.focus();
+          }
+        });
+
+        els.vaultSearchInput.addEventListener('input', (e) => {
+          state.searchQuery = e.target.value || '';
+          renderNotes();
+          renderMedia();
+        });
+
+        // FAB Action
+        els.vaultFab.addEventListener('click', () => {
+          if (state.activeTab === 'notes') {
+            openNoteModal(null);
+          } else if (state.activeTab === 'media') {
+            els.mediaFileInput.click();
+          }
+        });
+
+        els.mediaFileInput.addEventListener('change', (e) => handleMediaUpload(e.target.files));
+
+        // Note Modal
+        els.btnCloseNoteModal.addEventListener('click', closeNoteModal);
+        els.noteDecoySwitch.addEventListener('click', () => {
+          state.noteDecoyFlag = !state.noteDecoyFlag;
+          els.noteDecoySwitch.classList.toggle('on', state.noteDecoyFlag);
+          els.noteDecoySwitch.setAttribute('aria-checked', String(state.noteDecoyFlag));
+        });
+
+        els.noteForm.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const title = els.noteTitleInput.value.trim();
+          const body = els.noteBodyInput.value;
+          if (!title) return;
+
+          const existing = state.editingNoteId ? state.notes.find(n => n.id === state.editingNoteId) : null;
+          const note = {
+            id: existing ? existing.id : uid(),
+            title,
+            body,
+            decoyVisible: state.mode === 'decoy' ? true : state.noteDecoyFlag,
+            createdAt: existing ? existing.createdAt : Date.now(),
+            updatedAt: Date.now()
+          };
+          await dbPut('notes', note);
+          closeNoteModal();
+          await loadVaultData();
+          showToast(existing ? 'Note updated' : 'Note saved locally');
+        });
+
+        els.btnDeleteNote.addEventListener('click', () => {
+          if (!state.editingNoteId) return;
+          const targetId = state.editingNoteId;
+          openConfirm('Delete Note', 'Permanently delete this note from local storage?', 'Delete', async () => {
+            await dbDelete('notes', targetId);
+            closeConfirm();
+            closeNoteModal();
+            await loadVaultData();
+            showToast('Note deleted');
+          });
+        });
+
+        // Media Viewer
+        els.btnCloseViewer.addEventListener('click', closeMediaViewer);
+
+        els.viewerDecoySwitch.addEventListener('click', async () => {
+          const item = state.media.find(m => m.id === state.viewingMediaId);
+          if (!item) return;
+          item.decoyVisible = !item.decoyVisible;
+          els.viewerDecoySwitch.classList.toggle('on', item.decoyVisible);
+          els.viewerDecoySwitch.setAttribute('aria-checked', String(item.decoyVisible));
+          await dbPut('media', item);
+          renderMedia();
+          renderSettings();
+          showToast(item.decoyVisible ? 'Added to Decoy Mode' : 'Removed from Decoy Mode');
+        });
+
+        els.btnDownloadMedia.addEventListener('click', () => {
+          const item = state.media.find(m => m.id === state.viewingMediaId);
+          if (!item) return;
+          const url = getMediaUrl(item);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = item.name || 'vault-media';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        });
+
+        els.btnDeleteMedia.addEventListener('click', () => {
+          if (!state.viewingMediaId) return;
+          const targetId = state.viewingMediaId;
+          openConfirm('Delete Media', 'Permanently remove this file from your local vault?', 'Delete', async () => {
+            const url = state.objectUrls.get(targetId);
+            if (url && url.startsWith('blob:')) URL.revokeObjectURL(url);
+            state.objectUrls.delete(targetId);
+            await dbDelete('media', targetId);
+            closeConfirm();
+            closeMediaViewer();
+            await loadVaultData();
+            showToast('File deleted');
+          });
+        });
+
+        // Settings & Change Password (3 tries max)
+        els.btnOpenChangePw.addEventListener('click', openChangePwModal);
+        els.btnCloseChangePw.addEventListener('click', closeChangePwModal);
+
+        els.changePwForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          showAlert(els.changePwAlert, '');
+
+          const config = safeGet(CONFIG_KEY);
+          if (!config) return;
+
+          const target = state.mode === 'decoy' ? 'decoy' : els.changePwTarget.value;
+          const current = els.changePwCurrent.value;
+          const next = els.changePwNew.value;
+          const confirm = els.changePwConfirm.value;
+
+          const hashKeyMap = { primary: 'primaryHash', decoy: 'decoyHash', reset: 'resetHash' };
+          const expectedHash = config[hashKeyMap[target]];
+
+          if (sha256(current) !== expectedHash) {
+            state.pwChangeTriesLeft -= 1;
+            els.changePwCurrent.value = '';
+            if (state.pwChangeTriesLeft <= 0) {
+              closeChangePwModal();
+              lockVault();
+              showAlert(els.unlockAlert, 'Vault locked after 3 failed password change attempts.');
+              return;
+            }
+            els.changePwTriesLabel.textContent = state.pwChangeTriesLeft + (state.pwChangeTriesLeft === 1 ? ' try left' : ' tries left');
+            return showAlert(els.changePwAlert, 'Incorrect current password. ' + state.pwChangeTriesLeft + (state.pwChangeTriesLeft === 1 ? ' try remaining.' : ' tries remaining.'));
+          }
+
+          if (next.length < 4) {
+            return showAlert(els.changePwAlert, 'New password must be at least 4 characters.');
+          }
+          if (next !== confirm) {
+            return showAlert(els.changePwAlert, 'New passwords do not match.');
+          }
+
+          const newHash = sha256(next);
+          const otherHashes = Object.keys(hashKeyMap)
+            .filter(k => k !== target)
+            .map(k => config[hashKeyMap[k]]);
+
+          if (otherHashes.includes(newHash)) {
+            return showAlert(els.changePwAlert, 'This password conflicts with another vault key. Choose a unique password.');
+          }
+
+          config[hashKeyMap[target]] = newHash;
+          safeSet(CONFIG_KEY, config);
+          closeChangePwModal();
+          showToast('Password updated');
+        });
+
+        // Decoy Manager
+        els.btnOpenDecoyManager.addEventListener('click', openDecoyManager);
+        els.btnCloseDecoyMgr.addEventListener('click', () => els.decoyManagerModal.classList.remove('open'));
+
+        // Confirm Modal
+        els.btnConfirmCancel.addEventListener('click', closeConfirm);
+        els.btnConfirmOk.addEventListener('click', () => {
+          if (state.confirmCallback) state.confirmCallback();
+        });
+
+        // Lock Buttons
+        els.btnLockNow.addEventListener('click', lockVault);
+        els.settingsLockBtn.addEventListener('click', lockVault);
+
+        // Legal Page Navigation
+        els.setupOpenLegal.addEventListener('click', () => showScreen('legal'));
+        els.lockOpenLegal.addEventListener('click', () => showScreen('legal'));
+        els.settingsOpenLegal.addEventListener('click', () => showScreen('legal'));
+        els.btnLegalBack.addEventListener('click', () => showScreen(state.previousScreen || 'lock'));
+      }
+
+      /* ---------------- Boot ---------------- */
+      function init() {
+        updateClock();
+        setInterval(updateClock, 15000);
+        initPasswordToggles();
+        bindEvents();
+
+        const config = safeGet(CONFIG_KEY);
+        if (config && config.initialized) {
+          showScreen('lock');
+        } else {
+          showScreen('setup');
+        }
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>

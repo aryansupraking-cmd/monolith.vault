@@ -1,0 +1,8 @@
+{
+  "appId": "com.monolith.vault",
+  "appName": "Monolith Vault",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}
